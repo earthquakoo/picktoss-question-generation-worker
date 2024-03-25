@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from datetime import datetime
 
 from core.s3.s3_client import S3Client
 from core.discord.discord_client import DiscordClient
@@ -15,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def handler(event, context):
-    body: str = event["Records"][0]["body"]
+    # body: str = event["Records"][0]["body"]
     body: dict = json.loads(body)
     if "s3_key" not in body or "db_pk" not in body or "subscription_plan" not in body:
         raise ValueError(f"s3_key and db_pk and subscription_plan must be provided. event: {event}, context: {context}")
@@ -42,7 +43,7 @@ def handler(event, context):
         chunks.append(content[i : i + CHUNK_SIZE])
 
     without_placeholder_messages = load_prompt_messages("/var/task/core/llm/prompts/generate_questions.txt")
-    # without_placeholder_messages = load_prompt_messages("reminder/core/llm/prompts/generate_questions.txt")
+    # without_placeholder_messages = load_prompt_messages("core/llm/prompts/generate_questions.txt")
     free_plan_question_expose_count = 0
     total_generated_question_count = 0
 
@@ -90,7 +91,7 @@ def handler(event, context):
                 total_generated_question_count += 1
 
                 if subscription_plan == SubscriptionPlanType.FREE.value:
-                    if free_plan_question_expose_count >= QuizQuestionNum.FREE_PLAN_QUIZ_QUESTION_NUM:
+                    if free_plan_question_expose_count >= QuizQuestionNum.FREE_PLAN_QUIZ_QUESTION_NUM.value:
                         delivered_count = 0
                     else:
                         delivered_count = 1
@@ -100,8 +101,9 @@ def handler(event, context):
                 else:
                     raise ValueError("Wrong subscription plan type")
                 
-                question_insert_query = "INSERT INTO question (question, answer, document_id, delivered_count) VALUE (%s, %s, %s, %s)"
-                db_manager.execute_query(question_insert_query, (question, answer, db_pk, delivered_count))
+                question_insert_query = "INSERT INTO question (question, answer, document_id, delivered_count, created_at, updated_at) VALUE (%s, %s, %s, %s, %s, %s)"
+                timestamp = datetime.now()
+                db_manager.execute_query(question_insert_query, (question, answer, db_pk, delivered_count, timestamp, timestamp))
                 db_manager.commit()
 
         except Exception as e:
@@ -123,18 +125,18 @@ def handler(event, context):
     # Failed at every single generation
     if not success_at_least_once:
         document_update_query = "UPDATE document SET status = %s WHERE id = %s"
-        db_manager.execute_query(document_update_query, (DocumentStatus.COMPLETELY_FAILED, db_pk))
+        db_manager.execute_query(document_update_query, (DocumentStatus.COMPLETELY_FAILED.value, db_pk))
         db_manager.commit()
         return
 
     # Failed at least one chunk question generation
     if failed_at_least_once:
         document_update_query = "UPDATE document SET status = %s WHERE id = %s"
-        db_manager.execute_query(document_update_query, (DocumentStatus.PARTIAL_SUCCESS, db_pk))
+        db_manager.execute_query(document_update_query, (DocumentStatus.PARTIAL_SUCCESS.value, db_pk))
 
     else:  # ALL successful
         document_update_query = "UPDATE document SET status = %s WHERE id = %s"
-        db_manager.execute_query(document_update_query, (DocumentStatus.PROCESSED, db_pk))
+        db_manager.execute_query(document_update_query, (DocumentStatus.PROCESSED.value, db_pk))
         
     db_manager.commit()
 
@@ -149,7 +151,7 @@ def handler(event, context):
         "/var/task/core/llm/prompts/generate_summary.txt"
     )
     # without_placeholder_summary_messages = load_prompt_messages(
-    #     "reminder/core/llm/prompts/generate_summary.txt"
+    #     "core/llm/prompts/generate_summary.txt"
     # )
     messages = fill_message_placeholders(
         messages=without_placeholder_summary_messages, placeholders={"note": summary_input}
@@ -184,3 +186,11 @@ def handler(event, context):
     db_manager.close()
 
     return {"statusCode": 200, "message": "hi"}
+
+
+# event = '{"s3_key":"0a9ec7d4-b861-479a-b920-31abee0d67fd.1. Dependencies - First Steps.md","db_pk":1,"subscription_plan":"FREE"}'
+# context = "asd"
+
+# handler(event, context)
+
+print(DocumentStatus.PROCESSED.value)
