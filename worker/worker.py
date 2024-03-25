@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def handler(event, context):
-    # body: str = event["Records"][0]["body"]
+    body: str = event["Records"][0]["body"]
     body: dict = json.loads(body)
     if "s3_key" not in body or "db_pk" not in body or "subscription_plan" not in body:
         raise ValueError(f"s3_key and db_pk and subscription_plan must be provided. event: {event}, context: {context}")
@@ -26,7 +26,7 @@ def handler(event, context):
     subscription_plan = body["subscription_plan"]
     
     # core client settings
-    s3_client = S3Client(access_key=os.environ["PICKTOSS_AWS_ACCESS_KEY"], secret_key=os.environ["PICKTOSS_AWS_SECRET_KEY"], region_name="ap-northeast-1", bucket_name=os.environ["PICKTOSS_S3_BUCKET_NAME"])
+    s3_client = S3Client(access_key=os.environ["PICKTOSS_AWS_ACCESS_KEY"], secret_key=os.environ["PICKTOSS_AWS_SECRET_KEY"], region_name="us-east-1", bucket_name=os.environ["PICKTOSS_S3_BUCKET_NAME"])
     discord_client = DiscordClient(bot_token=os.environ["PICKTOSS_DISCORD_BOT_TOKEN"], channel_id=os.environ["PICKTOSS_DISCORD_CHANNEL_ID"])
     db_manager = DatabaseManager(host=os.environ["PICKTOSS_DB_HOST"], user=os.environ["PICKTOSS_DB_USER"], password=os.environ["PICKTOSS_DB_PASSWORD"], db=os.environ["PICKTOSS_DB_NAME"])
     chat_llm = OpenAIChatLLM(api_key=os.environ["PICKTOSS_OPENAI_API_KEY"], model="gpt-3.5-turbo-0125")
