@@ -2,7 +2,7 @@ from core.llm.openai import ChatMessage
 
 
 def load_prompt_messages(prompt_path: str) -> list[ChatMessage]:
-    with open(prompt_path, encoding="utf-8") as f:
+    with open(prompt_path) as f:
         content = f.read().strip()
 
     parts = content.split("[%")

@@ -14,23 +14,22 @@ from core.llm.utils import fill_message_placeholders, load_prompt_messages
 logging.basicConfig(level=logging.INFO)
 
 
-
 def handler(event, context):
-    body: str = event["Records"][0]["body"]
-    body: dict = json.loads(event)
+    print(f"event: {event}")
+    print(f"context: {context}")
+    event_info: str = event["Records"][0]["body"]
+    body: dict = json.loads(event_info)
     if "s3_key" not in body or "db_pk" not in body or "subscription_plan" not in body:
         raise ValueError(f"s3_key and db_pk and subscription_plan must be provided. event: {event}, context: {context}")
-
+    
     s3_key = body["s3_key"]
     db_pk = int(body["db_pk"])
     subscription_plan = body["subscription_plan"]
-    
     # core client settings
     s3_client = S3Client(access_key=os.environ["PICKTOSS_AWS_ACCESS_KEY"], secret_key=os.environ["PICKTOSS_AWS_SECRET_KEY"], region_name="us-east-1", bucket_name=os.environ["PICKTOSS_S3_BUCKET_NAME"])
     discord_client = DiscordClient(bot_token=os.environ["PICKTOSS_DISCORD_BOT_TOKEN"], channel_id=os.environ["PICKTOSS_DISCORD_CHANNEL_ID"])
     db_manager = DatabaseManager(host=os.environ["PICKTOSS_DB_HOST"], user=os.environ["PICKTOSS_DB_USER"], password=os.environ["PICKTOSS_DB_PASSWORD"], db=os.environ["PICKTOSS_DB_NAME"])
     chat_llm = OpenAIChatLLM(api_key=os.environ["PICKTOSS_OPENAI_API_KEY"], model="gpt-3.5-turbo-0125")
-    
     # Retrieve document from S3
     bucket_obj = s3_client.get_object(key=s3_key)
     content = bucket_obj.decode_content_str()
@@ -42,14 +41,13 @@ def handler(event, context):
     for i in range(0, len(content), CHUNK_SIZE):
         chunks.append(content[i : i + CHUNK_SIZE])
 
-    without_placeholder_messages = load_prompt_messages("/var/task/core/llm/prompts/generate_questions.txt")
-    # without_placeholder_messages = load_prompt_messages("core/llm/prompts/generate_questions.txt")
+    without_placeholder_messages = load_prompt_messages("/var/task/core/llm/prompts/generate_questions.txt") # dev & prod
+    # without_placeholder_messages = load_prompt_messages("core/llm/prompts/generate_questions.txt") # local
     free_plan_question_expose_count = 0
     total_generated_question_count = 0
 
     success_at_least_once = False
     failed_at_least_once = False
-
 
     prev_questions: list[str] = []
     for chunk in chunks:
@@ -100,8 +98,8 @@ def handler(event, context):
                     delivered_count = 1
                 else:
                     raise ValueError("Wrong subscription plan type")
-                
-                question_insert_query = "INSERT INTO question (question, answer, document_id, delivered_count, created_at, updated_at) VALUE (%s, %s, %s, %s, %s, %s)"
+                print("3")
+                question_insert_query = "INSERT INTO question (question, answer, document_id, delivered_count, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s)"
                 timestamp = datetime.now()
                 db_manager.execute_query(question_insert_query, (question, answer, db_pk, delivered_count, timestamp, timestamp))
                 db_manager.commit()
@@ -121,7 +119,6 @@ def handler(event, context):
 
         # Save generated question sets to database
         db_manager.commit()
-
     # Failed at every single generation
     if not success_at_least_once:
         document_update_query = "UPDATE document SET status = %s WHERE id = %s"
@@ -149,10 +146,10 @@ def handler(event, context):
 
     without_placeholder_summary_messages = load_prompt_messages(
         "/var/task/core/llm/prompts/generate_summary.txt"
-    )
+    ) # dev & prod
     # without_placeholder_summary_messages = load_prompt_messages(
     #     "core/llm/prompts/generate_summary.txt"
-    # )
+    # ) # local
     messages = fill_message_placeholders(
         messages=without_placeholder_summary_messages, placeholders={"note": summary_input}
     )
@@ -181,16 +178,7 @@ def handler(event, context):
     
     document_update_query = "UPDATE document SET summary = %s WHERE id = %s"
     db_manager.execute_query(document_update_query, (summary, db_pk))
-    
     db_manager.commit()
     db_manager.close()
 
     return {"statusCode": 200, "message": "hi"}
-
-
-# event = '{"s3_key":"0a9ec7d4-b861-479a-b920-31abee0d67fd.1. Dependencies - First Steps.md","db_pk":1,"subscription_plan":"FREE"}'
-# context = "asd"
-
-# handler(event, context)
-
-print(DocumentStatus.PROCESSED.value)
